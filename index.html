@@ -40,7 +40,7 @@ button:focus-visible{outline:2px solid #fff;outline-offset:2px}
 <div id="stage">
   <canvas id="space"></canvas>
   <div id="party"></div>
-  <div id="loader"><div id="box"><div id="pct">0%</div><div id="bar"><div id="fill"></div></div><div id="sub">Stream begint over: 10:00</div></div></div>
+  <div id="loader"><div id="box"><div id="pct">0%</div><div id="bar"><div id="fill"></div></div><div id="sub">Stream begint over: 07:38</div></div></div>
   <canvas id="fx"></canvas>
   <div id="flash"></div>
   <div id="kassim">Kassim komt er zo aan</div>
@@ -48,11 +48,11 @@ button:focus-visible{outline:2px solid #fff;outline-offset:2px}
 <div id="ctl">
   <button id="bTest">Test: laatste 10 sec</button>
   <button id="bTest4">Test: laatste 4 min</button>
-  <button id="bReset">Opnieuw (10 min)</button>
+  <button id="bReset">Opnieuw (7:38)</button>
   <button id="bHide">Knoppen verbergen</button>
 </div>
 <script>
-const TOTAL=600, BUILD=240, AFTER=30, BPM=150;
+const TOTAL=458, BUILD=240, AFTER=300, EXT=30, FADE=1.5, BPM=150;
 let TARGET=Date.now()+TOTAL*1000;
 const $=id=>document.getElementById(id);
 const clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));
@@ -76,8 +76,9 @@ const cv=$('fx'),cx=cv.getContext('2d'),sp=$('space'),sc=sp.getContext('2d');let
 function resize(){dpr=Math.min(devicePixelRatio||1,2);W=cv.width=sp.width=innerWidth*dpr;H=cv.height=sp.height=innerHeight*dpr}
 addEventListener('resize',resize);resize();
 
-const COLORS=['#ff2e93','#ffd400','#2596be','#00e0a4','#7a2cff','#ff7a1a','#ffffff'];
+const COLORS=['#2596be','#2596be','#2596be','#7fd3ee','#ffffff','#ffffff','#ffffff','#ff2e93','#ffd400'];
 const parts=[],sparks=[],rockets=[];
+let fwG=0,mix=0; /* fwG: voortgang 0→1 (vuurwerk wordt heftiger), mix: kans op feestkleur */
 function spawn(n,burst){
   for(let i=0;i<n;i++)parts.push({x:burst?W/2:Math.random()*W,y:burst?H*.55:-20*dpr,
     vx:(burst?(Math.random()-.5)*30:(Math.random()-.5)*3)*dpr,vy:(burst?-(8+Math.random()*18):(2+Math.random()*4))*dpr,
@@ -86,14 +87,21 @@ function spawn(n,burst){
 }
 
 /* vuurwerk */
-function launch(){explode(rnd(.1,.9)*W,rnd(.12,.5)*H,rnd(0,360))}
-function explode(x,y,hue){
-  const type=(Math.random()*3)|0,n=type===1?70:110,h2=(hue+rnd(60,180))%360;
+function pickCol(){
+  if(Math.random()<mix)return{h:rnd(0,360),s:100};
+  const r=Math.random();
+  if(r<.5)return{h:197,s:67};      /* zelfde blauw als de balk (#2596be) */
+  if(r<.75)return{h:193,s:95};     /* lichter blauw */
+  return{h:0,s:0};                 /* wit */
+}
+function launch(){explode(rnd(.1,.9)*W,rnd(.12,.5)*H,pickCol(),pickCol())}
+function explode(x,y,c1,c2){
+  const type=(Math.random()*3)|0,k=.45+.75*fwG,n=Math.round((type===1?70:110)*k),vs=.7+.4*fwG;
   for(let i=0;i<n;i++){
-    const a=type===1?i/n*6.283:rnd(0,6.283);
-    let v=type===1?9:rnd(2,12);
-    if(type===2&&i%2)v*=.55;
-    sparks.push({x,y,vx:Math.cos(a)*v*dpr,vy:Math.sin(a)*v*dpr,life:0,max:rnd(1.1,2.1),h:(type===2&&i%2)?h2:hue});
+    const a=type===1?i/n*6.283:rnd(0,6.283),alt=type===2&&i%2,c=alt?c2:c1;
+    let v=(type===1?9:rnd(2,12))*vs;
+    if(alt)v*=.55;
+    sparks.push({x,y,vx:Math.cos(a)*v*dpr,vy:Math.sin(a)*v*dpr,life:0,max:rnd(1.1,2.1),h:c.h,s:c.s});
   }
 }
 
@@ -115,15 +123,17 @@ function drawShip(c,x,y,S,I,e,kick){
   c.restore();
 }
 
-let last=performance.now(),acc=0,rAcc=0;
+let last=performance.now(),acc=0,rAcc=0,lastBeat=0;
 function draw(now){
   const dt=Math.min(.05,(now-last)/1000);last=now;
   const e=elapsed(),rem=remaining(),post=-rem;
-  const finished=post>=AFTER, fade=clamp((AFTER-post)/2);
+  const finished=post>=AFTER+FADE, fade=clamp((AFTER+FADE-post)/FADE);
+  const X=(rem<=0&&post<EXT)?1:0; /* extreme-fase: eerste 30 sec na 100% */
   /* intensiteit: 0 tot laatste 4 min, dan oplopend naar 1 */
   const I=finished?0:(rem<=0?1:(rem>BUILD?0:Math.pow(1-rem/BUILD,1.4)));
   const phase=(e*BPM/60)%1,kick=Math.exp(-6*phase)*(I>.08?1:0);
   const boost=rem>10?0:clamp(1-rem/10);
+  fwG=clamp(1-rem/total);mix=I*.25;
 
   /* loader */
   const pct=rem<=0?100:clamp(1-rem/total)*100;
@@ -131,18 +141,18 @@ function draw(now){
   $('pct').textContent=Math.floor(pct)+'%';
   const r=Math.max(0,Math.ceil(rem));
   $('sub').textContent=r>0?'Stream begint over: '+String(Math.floor(r/60)).padStart(2,'0')+':'+String(r%60).padStart(2,'0'):'Stream begint zo';
-  $('loader').style.opacity=fade;
+  $('loader').style.opacity=clamp(1-post/.4); /* balk + tekst weg zodra 100% */
   $('kassim').style.opacity=1-fade;
   $('pct').style.transform=I>0?'scale('+(1+kick*.1*I)+')':'';
   $('bar').style.boxShadow=I>0?'0 0 '+(10+I*30+kick*30)+'px #ff2e93,0 0 '+(30+I*50)+'px var(--c),inset 0 0 0 1px rgba(127,216,245,.4)':'';
 
   /* achtergrond: sterrenschip + feestkleuren + hardstyle-kick */
   $('space').style.opacity=clamp(I*6)*fade;
-  $('party').style.opacity=I*(.18+kick*.4)*fade;
+  $('party').style.opacity=I*(.18+X*.25+kick*(.4+X*.3))*fade;
   $('party').style.transform='rotate('+(e*25%360)+'deg) scale(1.7)';
   $('party').style.filter='saturate(1.4) hue-rotate('+(e*90%360)+'deg)';
-  $('flash').style.opacity=I>.6?kick*.28*(I-.6)/.4*fade:0;
-  $('stage').style.transform=I>.5?'translate('+rnd(-1,1)*kick*I*10+'px,'+rnd(-1,1)*kick*I*10+'px)':'';
+  $('flash').style.opacity=I>.6?kick*(.28+X*.3)*(I-.6)/.4*fade:0;
+  $('stage').style.transform=I>.5?'translate('+rnd(-1,1)*kick*I*(10+X*14)+'px,'+rnd(-1,1)*kick*I*(10+X*14)+'px)':'';
   if(I>0){
     sc.fillStyle='#02030a';sc.fillRect(0,0,W,H);
     const speed=.12+I*1.5+kick*I*.9;
@@ -157,12 +167,14 @@ function draw(now){
   }
 
   /* confetti + vuurwerk: meer naarmate I stijgt */
-  let rate=I*I*50+(rem>0&&rem<=10?boost*boost*180:0)+(rem<=0&&!finished?60:0);
+  let rate=(finished?0:3)+I*I*50+(rem>0&&rem<=10?boost*boost*180:0)+(X?500:0);
   acc+=rate*dt;while(acc>=1){spawn(1,false);acc--}
-  rAcc+=(I*I*3.5+(rem<=0?5:0))*dt;while(rAcc>=1){launch();rAcc--}
-  if(rem<=0&&!burstDone){burstDone=true;spawn(260,true);for(let i=0;i<8;i++)setTimeout(()=>launch(),i*120)}
+  rAcc+=(finished?0:.12+2.2*Math.pow(fwG,1.4)+I*I*3.5+(X?28:0))*dt;while(rAcc>=1){launch();rAcc--}
+  if(rem<=0&&!burstDone){burstDone=true;lastBeat=Math.floor(e*BPM/60);spawn(700,true);for(let i=0;i<30;i++)setTimeout(()=>launch(),i*90)}
+  if(X){const b=Math.floor(e*BPM/60);if(b!==lastBeat){lastBeat=b;launch();launch();if(b%4===0){spawn(120,true);launch();launch();launch()}}}
   if(finished){parts.length=0;sparks.length=0;rockets.length=0;$('stage').style.background='#000'}
 
+  $('fx').style.opacity=fade;
   cx.clearRect(0,0,W,H);
   for(let i=parts.length-1;i>=0;i--){
     const p=parts[i];p.life+=dt;
@@ -175,14 +187,14 @@ function draw(now){
   for(let i=rockets.length-1;i>=0;i--){
     const q=rockets[i];q.y+=q.vy*60*dt;
     cx.fillStyle='hsl('+q.hue+',100%,75%)';cx.fillRect(q.x-2*dpr,q.y,4*dpr,16*dpr);
-    if(q.y<=q.ty){explode(q.x,q.y,q.hue);rockets.splice(i,1)}
+    if(q.y<=q.ty){explode(q.x,q.y,pickCol(),pickCol());rockets.splice(i,1)}
   }
   for(let i=sparks.length-1;i>=0;i--){
     const p=sparks[i];p.life+=dt;
-    if(p.life>p.max||sparks.length>2500){sparks.splice(i,1);continue}
+    if(p.life>p.max||sparks.length>5000){sparks.splice(i,1);continue}
     p.vy+=.18*dpr*60*dt;p.vx*=.985;p.vy*=.985;
     const x0=p.x,y0=p.y;p.x+=p.vx*60*dt;p.y+=p.vy*60*dt;
-    cx.strokeStyle='hsla('+p.h+',100%,'+(60+20*(1-p.life/p.max))+'%,'+(1-p.life/p.max)+')';
+    const lf=1-p.life/p.max;cx.strokeStyle='hsla('+p.h+','+p.s+'%,'+(p.s?46+24*lf:70+30*lf)+'%,'+lf+')';
     cx.lineWidth=3*dpr;cx.beginPath();cx.moveTo(x0,y0);cx.lineTo(p.x,p.y);cx.stroke();
   }
   cx.globalCompositeOperation='source-over';
